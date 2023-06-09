@@ -11,7 +11,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/byte_multi_array.hpp>
 
-#define VERSION "0.0.1"
+#define VERSION "0.0.2"
 
 inline bool file_exists(const std::string& name) {
     struct stat buffer;   
@@ -165,11 +165,11 @@ public:
             "serial/bytes/send", 10, std::bind(&RosToSerialBridge::SerialSendDataTopicCallback, this, std::placeholders::_1));
         serialReceiveDataPublisher = this->create_publisher<std_msgs::msg::ByteMultiArray>("serial/bytes/receive", 10);
 
-        if (!has_parameter(_SerialPortNameParameterId)) declare_parameter(_SerialPortNameParameterId, serialPortName);
+        if (!has_parameter(_SerialPortNameParameterId)) declare_parameter(_SerialPortNameParameterId);
         bool serialPortNameRetrieved = get_parameter(_SerialPortNameParameterId, serialPortName);
         RCLCPP_INFO(get_logger(), "%s %s for '%s'.", serialPortNameRetrieved ? "Set" : "Defaulted", serialPortName.c_str(), _SerialPortNameParameterId.c_str());
 
-        if (!has_parameter(_BaudRateParameterId)) declare_parameter(_BaudRateParameterId, baudRate);
+        if (!has_parameter(_BaudRateParameterId)) declare_parameter(_BaudRateParameterId);
         bool baudRateRetrieved = get_parameter(_BaudRateParameterId, baudRate);
         RCLCPP_INFO(get_logger(), "%s %d for '%s'.", baudRateRetrieved ? "Set" : "Defaulted", baudRate, _BaudRateParameterId.c_str());
 
