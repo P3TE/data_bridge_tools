@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/qos.hpp>
+
 #include <std_msgs/msg/byte_multi_array.hpp>
 
 #define VERSION "0.0.2"
@@ -161,10 +163,6 @@ public:
 
         RCLCPP_INFO(get_logger(), "Starting %s version %s", get_name(), VERSION);
 
-        serialSendDataSubscriber = create_subscription<std_msgs::msg::ByteMultiArray>(
-            "serial/bytes/send", 10, std::bind(&RosToSerialBridge::SerialSendDataTopicCallback, this, std::placeholders::_1));
-        serialReceiveDataPublisher = this->create_publisher<std_msgs::msg::ByteMultiArray>("serial/bytes/receive", 10);
-
         if (!has_parameter(_SerialPortNameParameterId)) declare_parameter(_SerialPortNameParameterId);
         bool serialPortNameRetrieved = get_parameter(_SerialPortNameParameterId, serialPortName);
         RCLCPP_INFO(get_logger(), "%s %s for '%s'.", serialPortNameRetrieved ? "Set" : "Defaulted", serialPortName.c_str(), _SerialPortNameParameterId.c_str());
@@ -193,6 +191,14 @@ public:
         }
 
         RCLCPP_INFO(get_logger(), "Serial Port Successfully configured");
+
+        rclcpp::QoS qosProfile(30);
+        qosProfile.reliable();
+        qosProfile.transient_local();
+
+        serialReceiveDataPublisher = this->create_publisher<std_msgs::msg::ByteMultiArray>("serial/bytes/receive", qosProfile);
+        serialSendDataSubscriber = create_subscription<std_msgs::msg::ByteMultiArray>(
+            "serial/bytes/send", qosProfile, std::bind(&RosToSerialBridge::SerialSendDataTopicCallback, this, std::placeholders::_1));
 
         serialPortReadThread = std::thread{std::bind(&RosToSerialBridge::SerialReadThread, this)};
     }
