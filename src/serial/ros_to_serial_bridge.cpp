@@ -180,7 +180,7 @@ public:
         }
 
         if ( ( serialDevice = open( serialPortName.c_str(), O_RDWR | O_NOCTTY ) ) < 0 ) {
-            RCLCPP_FATAL(get_logger(), "Failed to open serial port: %s! Check your file permissions. A common fix is to add your user to the dialout groun: 'sudo usermod -aG dialout $USER', then restart your computer.", serialPortName.c_str() );
+            RCLCPP_FATAL(get_logger(), "Failed to open serial port: %s! Check your file permissions. A common fix is to add your user to the dialout group: 'sudo usermod -aG dialout $USER', then restart your computer.", serialPortName.c_str() );
             rclcpp::shutdown(nullptr, "Failed to open serial port.");
             return;
         }
