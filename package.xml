@@ -1,18 +1,13 @@
 <?xml version="1.0"?>
-<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
-<package format="3">
+<package format="2">
   <name>data_bridge_tools</name>
   <version>0.0.1</version>
   <description>Simple tools for briding between ROS2 and standard protocols such as USB Serial and TCP data sources.</description>
   <maintainer email="p96.smith@qut.edu.au">Peter Smith</maintainer>
   <license>BSD 3-Clause License</license>
 
-  <buildtool_depend>ament_cmake</buildtool_depend>
-
-  <depend>rclcpp</depend>
-  <depend>std_msgs</depend>
-
-  <export>
-    <build_type>ament_cmake</build_type>
-  </export>
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>roscpp</build_depend>
+  <build_export_depend>roscpp</build_export_depend>
+  <exec_depend>roscpp</exec_depend>
 </package>

@@ -1,47 +1,20 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 
 project(data_bridge_tools)
 
-# Default to C99
-if(NOT CMAKE_C_STANDARD)
-  set(CMAKE_C_STANDARD 99)
-endif()
+## Compile as C++11, supported in ROS Kinetic and newer
+add_compile_options(-std=c++11)
 
-# Default to C++14
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-endif()
-
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
-
-# find dependencies
-find_package(ament_cmake REQUIRED)
-
-# additional dependencies
-find_package(rclcpp REQUIRED)
-find_package(std_msgs REQUIRED)
-
-ament_export_dependencies(rosidl_default_runtime)
-
-add_executable(ros_to_serial_bridge src/serial/ros_to_serial_bridge.cpp)
-ament_target_dependencies(ros_to_serial_bridge rclcpp std_msgs)
-
-install(TARGETS
-  ros_to_serial_bridge
-  DESTINATION lib/${PROJECT_NAME}
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  std_msgs
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # uncomment the line when a copyright and license is not present in all source files
-  set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # uncomment the line when this package is not in a git repo
-  #set(ament_cmake_cpplint_FOUND TRUE)
-  ament_lint_auto_find_test_dependencies()
-endif()
+include_directories(${catkin_INCLUDE_DIRS})
 
-ament_package()
+catkin_package(
+  CATKIN_DEPENDS roscpp
+)
+
+add_executable(ros_to_serial_bridge src/serial/ros_to_serial_bridge.cpp)
+target_link_libraries(ros_to_serial_bridge ${catkin_LIBRARIES})

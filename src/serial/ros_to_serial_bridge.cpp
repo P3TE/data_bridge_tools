@@ -8,10 +8,9 @@
 #include <thread>
 #include <sys/stat.h>
 
-#include <rclcpp/rclcpp.hpp>
-#include <rclcpp/qos.hpp>
+#include <ros/ros.h>
 
-#include <std_msgs/msg/byte_multi_array.hpp>
+#include "std_msgs/ByteMultiArray.h"
 
 #define VERSION "0.0.2"
 
@@ -20,13 +19,13 @@ inline bool file_exists(const std::string& name) {
     return (stat (name.c_str(), &buffer) == 0); 
 }
 
-class RosToSerialBridge : public rclcpp::Node
+class RosToSerialBridge
 {
 
 private:
 
-    rclcpp::Subscription<std_msgs::msg::ByteMultiArray>::SharedPtr serialSendDataSubscriber;
-    rclcpp::Publisher<std_msgs::msg::ByteMultiArray>::SharedPtr serialReceiveDataPublisher;
+    ros::Subscriber serialSendDataSubscriber;
+    ros::Publisher serialReceiveDataPublisher;
 
     std::thread serialPortReadThread;
 
@@ -37,8 +36,8 @@ private:
 
     int serialDevice = -1;
 
-    void SerialSendDataTopicCallback(const std_msgs::msg::ByteMultiArray::SharedPtr serialSendDataMsg) {
-        RCLCPP_DEBUG(get_logger(), "Writing %d bytes to the serial port", serialSendDataMsg->data.size());
+    void SerialSendDataTopicCallback(const std_msgs::ByteMultiArray::ConstPtr& serialSendDataMsg) {
+        ROS_DEBUG("Writing %i bytes to the serial port", (int) serialSendDataMsg->data.size());
         write(serialDevice, (char*) (serialSendDataMsg->data.data()), serialSendDataMsg->data.size());
     }
 
@@ -47,16 +46,16 @@ private:
     */
     void PublishDataFromSerial(uint8_t* data, const int dataLength){
         
-        std_msgs::msg::ByteMultiArray byteMultiArray;
+        std_msgs::ByteMultiArray byteMultiArray;
         byteMultiArray.data.resize(dataLength);
         memcpy(&byteMultiArray.data[0], data, dataLength);
         byteMultiArray.layout.data_offset = 0;
-        std_msgs::msg::MultiArrayDimension dim;
+        std_msgs::MultiArrayDimension dim;
         dim.size = dataLength;
         dim.stride = 1;
         dim.label = "data";
         byteMultiArray.layout.dim.push_back(dim);
-        serialReceiveDataPublisher->publish(byteMultiArray);
+        serialReceiveDataPublisher.publish(byteMultiArray);
 
     }
 
@@ -113,19 +112,19 @@ private:
                 cfsetospeed( &options, B115200 );
                 break;
             default:
-                RCLCPP_FATAL(get_logger(), "INVALID BAUD RATE %d", baud);
+                ROS_FATAL("INVALID BAUD RATE %d", baud);
                 return -1;
         }
 
-        RCLCPP_INFO(get_logger(), "Serial baud rate set to: %d", baud);
+        ROS_INFO("Serial baud rate set to: %d", baud);
 
         if ( tcsetattr( fd, TCSANOW, &options ) < 0 ) {
-            RCLCPP_FATAL(get_logger(), "FAILED TO SET SERIAL DEVICE OPTIONS");
+            ROS_FATAL("FAILED TO SET SERIAL DEVICE OPTIONS");
             close( fd );
             return 1;
         }
 
-        RCLCPP_INFO(get_logger(), "Successfully set serial device options");
+        ROS_INFO("Successfully set serial device options");
 
         // Flush the serial port input and output buffers
         tcflush( fd, TCIOFLUSH );
@@ -135,7 +134,7 @@ private:
     void SerialReadThread() {
         uint8_t buffer[512];
 
-        while (rclcpp::ok()) {
+        while (ros::ok()) {
             int bytesRead = read(serialDevice, buffer, 512);
             if (bytesRead <= 0) {
 
@@ -143,62 +142,54 @@ private:
                 // Or that the serial port is closed.
                             
                 if (!file_exists(serialPortName)) {
-                    RCLCPP_FATAL(get_logger(), "Serial Port %s Closed.", serialPortName.c_str());
+                    ROS_FATAL("Serial Port %s Closed.", serialPortName.c_str());
                     break;
                 }
 
                 continue;
             }
 
-            RCLCPP_DEBUG(get_logger(), "Read %i bytes from the serial port", bytesRead);
+            ROS_DEBUG("Read %i bytes from the serial port", bytesRead);
             
             PublishDataFromSerial(buffer, bytesRead);
         }
 
-        rclcpp::shutdown(nullptr, "Serial port closed.");
+        ros::shutdown();
     }
 
 public:
-    RosToSerialBridge() : Node("ros_to_serial_bridge") {
+    RosToSerialBridge(ros::NodeHandle& n) {
 
-        RCLCPP_INFO(get_logger(), "Starting %s version %s", get_name(), VERSION);
+        bool serialPortNameRetreived = n.getParam(_SerialPortNameParameterId, serialPortName);
+        ROS_INFO("%s %s for '%s'.", serialPortNameRetreived ? "Set" : "Defaulted", serialPortName.c_str(), _SerialPortNameParameterId.c_str());
 
-        if (!has_parameter(_SerialPortNameParameterId)) declare_parameter(_SerialPortNameParameterId);
-        bool serialPortNameRetrieved = get_parameter(_SerialPortNameParameterId, serialPortName);
-        RCLCPP_INFO(get_logger(), "%s %s for '%s'.", serialPortNameRetrieved ? "Set" : "Defaulted", serialPortName.c_str(), _SerialPortNameParameterId.c_str());
+        bool baudRateRetreived = n.getParam(_BaudRateParameterId, baudRate);
+        ROS_INFO("%s %i for '%s'.", baudRateRetreived ? "Set" : "Defaulted", baudRate, _BaudRateParameterId.c_str());
 
-        if (!has_parameter(_BaudRateParameterId)) declare_parameter(_BaudRateParameterId);
-        bool baudRateRetrieved = get_parameter(_BaudRateParameterId, baudRate);
-        RCLCPP_INFO(get_logger(), "%s %d for '%s'.", baudRateRetrieved ? "Set" : "Defaulted", baudRate, _BaudRateParameterId.c_str());
-
-        RCLCPP_INFO(get_logger(), "Opening serial port %s @ %i Baud", serialPortName.c_str(), baudRate);
+        ROS_INFO("Opening serial port %s @ %i Baud", serialPortName.c_str(), baudRate);
 
         if (!file_exists(serialPortName)) {
-            RCLCPP_FATAL(get_logger(), "Serial Port %s does not exist!", serialPortName.c_str());
-            rclcpp::shutdown(nullptr, "Failed to open serial port.");
+            ROS_FATAL("Serial Port %s does not exist!", serialPortName.c_str());
+            ros::shutdown();
             return;
         }
 
         if ( ( serialDevice = open( serialPortName.c_str(), O_RDWR | O_NOCTTY ) ) < 0 ) {
-            RCLCPP_FATAL(get_logger(), "Failed to open serial port: %s! Check your file permissions. A common fix is to add your user to the dialout group: 'sudo usermod -aG dialout $USER', then restart your computer.", serialPortName.c_str() );
-            rclcpp::shutdown(nullptr, "Failed to open serial port.");
+            ROS_FATAL("Failed to open serial port: %s! Check your file permissions. A common fix is to add your user to the dialout group: 'sudo usermod -aG dialout $USER', then restart your computer.", serialPortName.c_str() );
+            ros::shutdown();
             return;
         }
 
         if (SetSerialDeviceParams(serialDevice, baudRate) != 0 ) {
-            rclcpp::shutdown();
+            ros::shutdown();
             return;
         }
 
-        RCLCPP_INFO(get_logger(), "Serial Port Successfully configured");
+        ROS_INFO("Serial Port Successfully configured");
 
-        rclcpp::QoS qosProfile(30);
-        qosProfile.reliable();
-        qosProfile.transient_local();
-
-        serialReceiveDataPublisher = this->create_publisher<std_msgs::msg::ByteMultiArray>("serial/bytes/receive", qosProfile);
-        serialSendDataSubscriber = create_subscription<std_msgs::msg::ByteMultiArray>(
-            "serial/bytes/send", qosProfile, std::bind(&RosToSerialBridge::SerialSendDataTopicCallback, this, std::placeholders::_1));
+        serialSendDataSubscriber = n.subscribe<std_msgs::ByteMultiArray>("serial/bytes/send", 10,
+            std::bind(&RosToSerialBridge::SerialSendDataTopicCallback, this, std::placeholders::_1));
+        serialReceiveDataPublisher = n.advertise<std_msgs::ByteMultiArray>("serial/bytes/receive", 10);
 
         serialPortReadThread = std::thread{std::bind(&RosToSerialBridge::SerialReadThread, this)};
     }
@@ -211,8 +202,14 @@ public:
 
 int main(int argc, char** argv)
 {
-    rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<RosToSerialBridge>());
-    rclcpp::shutdown();
+
+    ros::init(argc, argv, "ros_to_serial_bridge");
+    ros::NodeHandle n;
+
+    ROS_INFO("Starting %s v%s", ros::this_node::getName().c_str(), VERSION);
+    std::shared_ptr<RosToSerialBridge> rosToSerialBridge = std::make_shared<RosToSerialBridge>(n);
+    ros::spin();
+
+    ros::shutdown();
     return 0;
 }
