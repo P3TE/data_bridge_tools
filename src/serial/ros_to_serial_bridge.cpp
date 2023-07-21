@@ -13,7 +13,9 @@
 
 #include <std_msgs/msg/byte_multi_array.hpp>
 
-#define VERSION "0.0.2"
+#include "serial_termios_helper_functions.hpp"
+
+#define VERSION "0.0.3"
 
 inline bool file_exists(const std::string& name) {
     struct stat buffer;   
@@ -33,7 +35,7 @@ private:
     const std::string _SerialPortNameParameterId = "serial_port_name";
     std::string serialPortName = "/dev/ttyUSB0";
     const std::string _BaudRateParameterId = "baud_rate";
-    int baudRate = 9600;
+    int humanReadableBaud = 9600;
 
     int serialDevice = -1;
 
@@ -58,78 +60,6 @@ private:
         byteMultiArray.layout.dim.push_back(dim);
         serialReceiveDataPublisher->publish(byteMultiArray);
 
-    }
-
-    /**
-     * Initialise the serial port in raw mode (no modification of the data)
-     */
-    int SetSerialDeviceParams(int fd, int baud) {
-        struct termios options;
-
-        fcntl( fd, F_SETFL, 0 );
-        tcgetattr( fd, &options );
-
-        // https://man7.org/linux/man-pages/man3/termios.3.html
-        // Raw mode
-        // cfmakeraw() sets the terminal to something like the "raw" mode of
-        // the old Version 7 terminal driver: input is available character
-        // by character, echoing is disabled, and all special processing of
-        // terminal input and output characters is disabled.  The terminal
-        // attributes are set as follows:
-
-        options.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP
-                            | INLCR | IGNCR | ICRNL | IXON);
-        options.c_oflag &= ~OPOST;
-        options.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-        options.c_cflag &= ~(CSIZE | PARENB);
-        options.c_cflag |= CS8;
-
-        // http://unixwiz.net/techtips/termios-vmin-vtime.html
-        // Return from read() after any number of bytes (VMIN = 0)
-        // Wait for up to 5 tenths of a second without returning anything (VTIME)
-        // This does mean after 5 tenths of a second with nothing, it will return from read with 0 bytes
-        options.c_cc[VMIN] = 0;
-        options.c_cc[VTIME] = 5;
-
-        switch ( baud ) {
-            case 9600:
-                cfsetispeed( &options, B9600 );
-                cfsetospeed( &options, B9600 );
-                break;
-            case 19200:
-                cfsetispeed( &options, B19200 );
-                cfsetospeed( &options, B19200 );
-                break;
-            case 38400:
-                cfsetispeed( &options, B38400 );
-                cfsetospeed( &options, B38400 );
-                break;
-            case 57600:
-                cfsetispeed( &options, B57600 );
-                cfsetospeed( &options, B57600 );
-                break;
-            case 115200:
-                cfsetispeed( &options, B115200 );
-                cfsetospeed( &options, B115200 );
-                break;
-            default:
-                RCLCPP_FATAL(get_logger(), "INVALID BAUD RATE %d", baud);
-                return -1;
-        }
-
-        RCLCPP_INFO(get_logger(), "Serial baud rate set to: %d", baud);
-
-        if ( tcsetattr( fd, TCSANOW, &options ) < 0 ) {
-            RCLCPP_FATAL(get_logger(), "FAILED TO SET SERIAL DEVICE OPTIONS");
-            close( fd );
-            return 1;
-        }
-
-        RCLCPP_INFO(get_logger(), "Successfully set serial device options");
-
-        // Flush the serial port input and output buffers
-        tcflush( fd, TCIOFLUSH );
-        return 0;
     }
 
     void SerialReadThread() {
@@ -168,10 +98,14 @@ public:
         RCLCPP_INFO(get_logger(), "%s %s for '%s'.", serialPortNameRetrieved ? "Set" : "Defaulted", serialPortName.c_str(), _SerialPortNameParameterId.c_str());
 
         if (!has_parameter(_BaudRateParameterId)) declare_parameter(_BaudRateParameterId);
-        bool baudRateRetrieved = get_parameter(_BaudRateParameterId, baudRate);
-        RCLCPP_INFO(get_logger(), "%s %d for '%s'.", baudRateRetrieved ? "Set" : "Defaulted", baudRate, _BaudRateParameterId.c_str());
+        bool baudRateRetrieved = get_parameter(_BaudRateParameterId, humanReadableBaud);
+        RCLCPP_INFO(get_logger(), "%s %d for '%s'.", baudRateRetrieved ? "Set" : "Defaulted", humanReadableBaud, _BaudRateParameterId.c_str());
+        BaudRate baud = BaudRateIntToSpeed(humanReadableBaud);
+        if (!baud.valid) {
+            RCLCPP_FATAL(get_logger(), "Unsupported baud rate: %i", baud.humanReadableBaud);
+        }
 
-        RCLCPP_INFO(get_logger(), "Opening serial port %s @ %i Baud", serialPortName.c_str(), baudRate);
+        RCLCPP_INFO(get_logger(), "Opening serial port %s @ %i Baud", serialPortName.c_str(), humanReadableBaud);
 
         if (!file_exists(serialPortName)) {
             RCLCPP_FATAL(get_logger(), "Serial Port %s does not exist!", serialPortName.c_str());
@@ -185,12 +119,25 @@ public:
             return;
         }
 
-        if (SetSerialDeviceParams(serialDevice, baudRate) != 0 ) {
+        int setRawModeErrorCode = SetSerialDeviceToRawMode(serialDevice, baud);
+        if (setRawModeErrorCode != 0 ) {
+            switch (setRawModeErrorCode)
+            {
+            case TERMIOS_ERROR_INVALID_BAUD_RATE:
+                RCLCPP_FATAL(get_logger(), "Unsupported baud rate: %i", humanReadableBaud);
+                break;
+            case TERMIOS_ERROR_FAILED_TO_SET_DEVICE_OPTION:
+                RCLCPP_FATAL(get_logger(), "Failed to set device options for 'Raw Mode'!");
+                break;
+            default:
+                RCLCPP_FATAL(get_logger(), "Failed to set serial in raw mode with error code %i", setRawModeErrorCode);
+                break;
+            }
             rclcpp::shutdown();
             return;
         }
 
-        RCLCPP_INFO(get_logger(), "Serial Port Successfully configured");
+        RCLCPP_INFO(get_logger(), "Serial port successfully configured in raw mode for port %s @ BAUD %i", serialPortName.c_str(), humanReadableBaud);
 
         rclcpp::QoS qosProfile(30);
         qosProfile.reliable();

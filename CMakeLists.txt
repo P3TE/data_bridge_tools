@@ -25,7 +25,9 @@ find_package(std_msgs REQUIRED)
 
 ament_export_dependencies(rosidl_default_runtime)
 
-add_executable(ros_to_serial_bridge src/serial/ros_to_serial_bridge.cpp)
+add_executable(ros_to_serial_bridge 
+  src/serial/ros_to_serial_bridge.cpp
+  src/serial/serial_termios_helper_functions.cpp)
 ament_target_dependencies(ros_to_serial_bridge rclcpp std_msgs)
 
 install(TARGETS
